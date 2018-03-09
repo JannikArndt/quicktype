@@ -40,8 +40,8 @@ enum Framework {
 
 export default class KotlinTargetLanguage extends TargetLanguage {
     private readonly _frameworkOption = new EnumOption("framework", "Serialization framework", [
-        ["klaxon", Framework.Klaxon],
-        ["none", Framework.None]
+        ["just-types", Framework.None],
+        ["klaxon", Framework.Klaxon]
     ]);
 
     constructor() {
@@ -215,61 +215,61 @@ class KotlinRenderer extends ConvenienceRenderer {
         );
     };
 
-    private toJsonString = (t: Type, e: Sourcelike): Sourcelike => {
-        return matchType<Sourcelike>(
-            t,
-            _anyType => "",
-            _nullType => `"null"`,
-            _boolType => [e, `.toString()`],
-            _integerType => [e, `.toString()`],
-            _doubleType => [e, `.toString()`],
-            _stringType => e,
-            _arrayType => `"[]"`, // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
-            // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
-            _classType => [e, `.toJson()`],
-            _mapType => `"{}"`, // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
-            _enumType => `"FIXME"`, // this.nameForNamedType(enumType),
-            _unionType => `"FIXME"`
-        );
-    };
+    // private toJsonString = (t: Type, e: Sourcelike): Sourcelike => {
+    //     return matchType<Sourcelike>(
+    //         t,
+    //         _anyType => "",
+    //         _nullType => `"null"`,
+    //         _boolType => [e, `.toString()`],
+    //         _integerType => [e, `.toString()`],
+    //         _doubleType => [e, `.toString()`],
+    //         _stringType => e,
+    //         _arrayType => `"[]"`, // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
+    //         // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
+    //         _classType => [e, `.toJson()`],
+    //         _mapType => `"{}"`, // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
+    //         _enumType => `"FIXME"`, // this.nameForNamedType(enumType),
+    //         _unionType => `"FIXME"`
+    //     );
+    // };
 
-    private fromJsonValue = (t: Type, e: Sourcelike): Sourcelike => {
-        return matchType<Sourcelike>(
-            t,
-            _anyType => "false",
-            _nullType => "false",
-            _boolType => e,
-            _integerType => e,
-            _doubleType => e,
-            _stringType => e,
-            _arrayType => "false", // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
-            // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
-            _classType => "false",
-            _mapType => "false", // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
-            _enumType => "false", // this.nameForNamedType(enumType),
-            _unionType => "false"
-        );
-    };
+    // private fromJsonValue = (t: Type, e: Sourcelike): Sourcelike => {
+    //     return matchType<Sourcelike>(
+    //         t,
+    //         _anyType => "false",
+    //         _nullType => "false",
+    //         _boolType => e,
+    //         _integerType => e,
+    //         _doubleType => e,
+    //         _stringType => e,
+    //         _arrayType => "false", // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
+    //         // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
+    //         _classType => "false",
+    //         _mapType => "false", // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
+    //         _enumType => "false", // this.nameForNamedType(enumType),
+    //         _unionType => "false"
+    //     );
+    // };
 
-    private toJsonValueGuard = (t: Type, _e: Sourcelike): Sourcelike => {
-        return matchType<Sourcelike>(
-            t,
-            _anyType => "is Any",
-            _nullType => "is Any",
-            _boolType => "is Bool",
-            _integerType => "is Int",
-            _doubleType => "is Any",
-            _stringType => "is String",
-            _arrayType => "is Any", // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
-            // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
-            _classType => "is Any",
-            _mapType => "is Any", // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
-            _enumType => "is Any", // this.nameForNamedType(enumType),
-            _unionType => "is Any"
-        );
-    };
+    // private toJsonValueGuard = (t: Type, _e: Sourcelike): Sourcelike => {
+    //     return matchType<Sourcelike>(
+    //         t,
+    //         _anyType => "is Any",
+    //         _nullType => "is Any",
+    //         _boolType => "is Bool",
+    //         _integerType => "is Int",
+    //         _doubleType => "is Any",
+    //         _stringType => "is String",
+    //         _arrayType => "is Any", // ["List<", this.kotlinType(arrayType.items, withIssues), ">"],
+    //         // _classType => ["klaxon.toJsonString(", e, ", as Any)"],
+    //         _classType => "is Any",
+    //         _mapType => "is Any", // ["Map<String, ", this.kotlinType(mapType.values, withIssues), ">"],
+    //         _enumType => "is Any", // this.nameForNamedType(enumType),
+    //         _unionType => "is Any"
+    //     );
+    // };
 
-    private shouldOmit(t: Type) {
+    private shouldOmit(t: Type): boolean {
         return (
             this._framework === Framework.Klaxon &&
             matchType<boolean>(
@@ -432,39 +432,39 @@ class KotlinRenderer extends ConvenienceRenderer {
         });
     };
 
-    private renderUnionConverter = (u: UnionType, name: Name): void => {
-        const [maybeNull, nonNulls] = removeNullFromUnion(u);
-        this.emitBlock(["val convert", name, " = object: Converter<", name, ">"], () => {
-            this.emitBlock(["override fun toJson(value: ", name, "): String? = when (value)"], () => {
-                const table: Sourcelike[][] = [];
-                this.forEachUnionMember(u, nonNulls, "none", null, (fieldName, t) => {
-                    // const csType = this.nullableCSType(t);
-                    table.push([["is ", name, ".", fieldName], [" -> ", this.toJsonString(t, "value.value")]]);
-                });
-                this.emitTable(table);
-                //  this.emitLine("else -> null");
-            });
-            this.ensureBlankLine();
-            this.emitBlock(["override fun fromJson(jv: JsonValue): ", name], () => {
-                this.emitLine("val x = jv.inside");
-                this.emitBlock("return when (x)", () => {
-                    const table: Sourcelike[][] = [];
-                    this.forEachUnionMember(u, nonNulls, "none", null, (fieldName, t) => {
-                        // const csType = this.nullableCSType(t);
-                        table.push([
-                            [this.toJsonValueGuard(t, "x")],
-                            [" -> ", name, ".", fieldName, "(", this.fromJsonValue(t, "x"), ")"]
-                        ]);
-                    });
-                    if (maybeNull !== null) {
-                        table.push([["is null"], [" -> ", name, ".Null()"]]);
-                    }
-                    table.push([[`else`], [` -> throw IllegalArgumentException("Invalid `, name, `")`]]);
-                    this.emitTable(table);
-                });
-            });
-        });
-    };
+    // private renderUnionConverter = (u: UnionType, name: Name): void => {
+    //     const [maybeNull, nonNulls] = removeNullFromUnion(u);
+    //     this.emitBlock(["val convert", name, " = object: Converter<", name, ">"], () => {
+    //         this.emitBlock(["override fun toJson(value: ", name, "): String? = when (value)"], () => {
+    //             const table: Sourcelike[][] = [];
+    //             this.forEachUnionMember(u, nonNulls, "none", null, (fieldName, t) => {
+    //                 // const csType = this.nullableCSType(t);
+    //                 table.push([["is ", name, ".", fieldName], [" -> ", this.toJsonString(t, "value.value")]]);
+    //             });
+    //             this.emitTable(table);
+    //             //  this.emitLine("else -> null");
+    //         });
+    //         this.ensureBlankLine();
+    //         this.emitBlock(["override fun fromJson(jv: JsonValue): ", name], () => {
+    //             this.emitLine("val x = jv.inside");
+    //             this.emitBlock("return when (x)", () => {
+    //                 const table: Sourcelike[][] = [];
+    //                 this.forEachUnionMember(u, nonNulls, "none", null, (fieldName, t) => {
+    //                     // const csType = this.nullableCSType(t);
+    //                     table.push([
+    //                         [this.toJsonValueGuard(t, "x")],
+    //                         [" -> ", name, ".", fieldName, "(", this.fromJsonValue(t, "x"), ")"]
+    //                     ]);
+    //                 });
+    //                 if (maybeNull !== null) {
+    //                     table.push([["is null"], [" -> ", name, ".Null()"]]);
+    //                 }
+    //                 table.push([[`else`], [` -> throw IllegalArgumentException("Invalid `, name, `")`]]);
+    //                 this.emitTable(table);
+    //             });
+    //         });
+    //     });
+    // };
 
     private renderEnumDefinition = (e: EnumType, enumName: Name): void => {
         this.emitDescription(this.descriptionForType(e));
