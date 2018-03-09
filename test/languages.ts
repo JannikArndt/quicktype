@@ -512,3 +512,23 @@ export const FlowLanguage: Language = {
   quickTestRendererOptions: [],
   sourceFiles: ["src/language/Flow.ts"]
 };
+
+export const KotlinLanguage: Language = {
+  name: "kotlin",
+  base: "test/fixtures/kotlin",
+  setupCommand: "touch sample.json && gradle -Pmain=main.kt",
+  compileCommand: "true",
+  runCommand(sample: string) {
+    return `cp "${sample}" sample.json && gradle -Pmain=main.kt --quiet`;
+  },
+  diffViaSchema: true,
+  allowMissingNull: true,
+  output: "TopLevel.kt",
+  topLevel: "TopLevel",
+  skipJSON: [],
+  skipSchema: [],
+  skipMiscJSON: false,
+  rendererOptions: {},
+  quickTestRendererOptions: [],
+  sourceFiles: ["src/Language/Kotlin.ts"]
+};

@@ -1,0 +1,34 @@
+buildscript {
+  ext.kotlin_version = '1.0.5'
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+  }
+}
+
+apply plugin: 'kotlin'
+apply plugin: 'application'
+
+repositories {
+  mavenCentral()
+  jcenter()
+}
+
+dependencies {
+  compile "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+  compile 'com.beust:klaxon:2.1.11'
+}
+
+sourceSets {
+  main.java.srcDirs += './'
+}
+
+defaultTasks 'run'
+
+run {
+  if (project.hasProperty('main')) {
+    main(project.main.replace(".kt", "Kt").capitalize())
+  }
+}
