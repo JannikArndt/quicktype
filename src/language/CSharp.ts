@@ -20,6 +20,7 @@ import { TargetLanguage } from "../TargetLanguage";
 import { StringOption, EnumOption, Option, BooleanOption } from "../RendererOptions";
 import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
 import { StringTypeMapping } from "../TypeBuilder";
+import { transformationForType } from "../Transformers";
 
 const unicode = require("unicode-properties");
 
@@ -97,6 +98,11 @@ export default class CSharpTargetLanguage extends TargetLanguage {
 
     get supportsOptionalClassProperties(): boolean {
         return true;
+    }
+
+    needsTransformerForUnion(u: UnionType): boolean {
+        const supportedKinds: TypeKind[] = ["null", "double", "bool", "string"];
+        return u.members.every(t => supportedKinds.indexOf(t.kind) >= 0);
     }
 
     protected get rendererClass(): new (
@@ -226,6 +232,11 @@ export class CSharpRenderer extends ConvenienceRenderer {
     }
 
     protected csType(t: Type, withIssues: boolean = false): Sourcelike {
+        const transformation = transformationForType(t);
+        if (transformation !== undefined) {
+            return this.csType(transformation.targetType, withIssues);
+        }
+        
         return matchType<Sourcelike>(
             t,
             _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "object"),
