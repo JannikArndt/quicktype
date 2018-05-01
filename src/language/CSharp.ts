@@ -20,7 +20,7 @@ import { TargetLanguage } from "../TargetLanguage";
 import { StringOption, EnumOption, Option, BooleanOption } from "../RendererOptions";
 import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
 import { StringTypeMapping } from "../TypeBuilder";
-import { transformationForType } from "../Transformers";
+import { followTargetType, transformationForType, Transformer, DecodingTransformer } from "../Transformers";
 
 const unicode = require("unicode-properties");
 
@@ -101,7 +101,7 @@ export default class CSharpTargetLanguage extends TargetLanguage {
     }
 
     needsTransformerForUnion(u: UnionType): boolean {
-        const supportedKinds: TypeKind[] = ["null", "double", "bool", "string"];
+        const supportedKinds: TypeKind[] = ["integer", "bool", "string"];
         return u.members.every(t => supportedKinds.indexOf(t.kind) >= 0);
     }
 
@@ -232,13 +232,8 @@ export class CSharpRenderer extends ConvenienceRenderer {
     }
 
     protected csType(t: Type, withIssues: boolean = false): Sourcelike {
-        const transformation = transformationForType(t);
-        if (transformation !== undefined) {
-            return this.csType(transformation.targetType, withIssues);
-        }
-        
         return matchType<Sourcelike>(
-            t,
+            followTargetType(t),
             _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "object"),
             _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "object"),
             _boolType => "bool",
@@ -549,6 +544,10 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         return result;
     }
 
+    protected makeTransformationNamer(): Namer {
+        return funPrefixNamer("transformation-namer", n => csNameStyle(`${n}_converter`));
+    }
+
     protected makeNamedTypeDependencyNames(t: Type, name: Name): DependencyName[] {
         if (!(t instanceof EnumType)) return [];
 
@@ -600,10 +599,11 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
     protected attributesForProperty(property: ClassProperty, jsonName: string): Sourcelike[] | undefined {
         if (!this._needAttributes) return undefined;
 
-        const t = property.type;
+        const attributes: Sourcelike[] = [];
+
         const jsonProperty = this.dense ? denseJsonPropertyName : "JsonProperty";
         const escapedName = utf16StringEscape(jsonName);
-        const isNullable = t.isNullable;
+        const isNullable = followTargetType(property.type).isNullable;
         const isOptional = property.isOptional;
         const requiredClass = this.dense ? "R" : "Required";
         const nullValueHandlingClass = this.dense ? "N" : "NullValueHandling";
@@ -619,7 +619,14 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         } else {
             required = [", Required = ", requiredClass, ".Always", nullValueHandling];
         }
-        return [["[", jsonProperty, '("', escapedName, '"', required, ")]"]];
+        attributes.push(["[", jsonProperty, '("', escapedName, '"', required, ")]"]);
+
+        const transformationName = this.nameForTransformation(property.type);
+        if (transformationName !== undefined) {
+            attributes.push(["[JsonConverter(", transformationName, ")]"]);
+        }
+
+        return attributes;
     }
 
     protected blankLinesBetweenAttributes(): boolean {
@@ -709,13 +716,22 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         );
     }
 
-    private emitUnionJSONPartial(u: UnionType, unionName: Name): void {
-        const tokenCase = (tokenType: string): void => {
-            this.emitLine("case JsonToken.", tokenType, ":");
-        };
+    private emitDecoderSwitch(emitBody: () => void): void {
+        this.emitLine("switch (reader.TokenType)");
+        this.emitBlock(emitBody);
+    }
 
+    private emitTokenCase(tokenType: string): void {
+        this.emitLine("case JsonToken.", tokenType, ":");
+    }
+
+    private emitThrow(message: Sourcelike): void {
+        this.emitLine("throw new Exception(", message, ");");
+    }
+
+    private emitUnionJSONPartial(u: UnionType, unionName: Name): void {
         const emitNullDeserializer = (): void => {
-            tokenCase("Null");
+            this.emitTokenCase("Null");
             this.indent(() => this.emitLine("return;"));
         };
 
@@ -728,7 +744,7 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
             const t = u.findMember(kind);
             if (t === undefined) return;
 
-            tokenCase(tokenType);
+            this.emitTokenCase(tokenType);
             this.indent(() => emitDeserializeType(t));
         };
 
@@ -736,16 +752,16 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
             const t = u.findMember("double");
             if (t === undefined) return;
 
-            if (u.findMember("integer") === undefined) tokenCase("Integer");
-            tokenCase("Float");
+            if (u.findMember("integer") === undefined) this.emitTokenCase("Integer");
+            this.emitTokenCase("Float");
             this.indent(() => emitDeserializeType(t));
         };
 
         const emitStringDeserializer = (): void => {
             const stringTypes = u.stringTypeMembers;
             if (stringTypes.isEmpty()) return;
-            tokenCase("String");
-            tokenCase("Date");
+            this.emitTokenCase("String");
+            this.emitTokenCase("Date");
             this.indent(() => {
                 if (stringTypes.size === 1) {
                     emitDeserializeType(defined(stringTypes.first()));
@@ -784,8 +800,7 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
                     this.emitLine(fieldName, " = null;");
                 });
                 this.ensureBlankLine();
-                this.emitLine("switch (reader.TokenType)");
-                this.emitBlock(() => {
+                this.emitDecoderSwitch(() => {
                     if (hasNull !== null) emitNullDeserializer();
                     emitDeserializer("Integer", "integer");
                     emitDoubleDeserializer();
@@ -795,7 +810,7 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
                     emitDeserializer("StartObject", "map");
                     emitStringDeserializer();
                 });
-                this.emitLine('throw new Exception("Cannot convert ', unionName, '");');
+                this.emitThrow(['"Cannot convert ', unionName, '"']);
             });
             this.ensureBlankLine();
             this.emitLine("public void WriteJson(JsonWriter writer, JsonSerializer serializer)");
@@ -810,7 +825,7 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
                 if (hasNull !== null) {
                     this.emitLine("writer.WriteNull();");
                 } else {
-                    this.emitLine('throw new Exception("Union must not be null");');
+                    this.emitThrow('"Union must not be null"');
                 }
             });
         });
@@ -829,6 +844,17 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         });
     }
 
+    private emitCanConvert(expr: Sourcelike): void {
+        this.emitExpressionMember("public override bool CanConvert(Type t)", expr);
+    }
+
+    private emitReadJson(emitBody: () => void): void {
+        this.emitLine(
+            "public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)"
+        );
+        this.emitBlock(emitBody);
+    }
+
     private emitConverterMembers(): void {
         const enumNames = this.enums.map(this.nameForNamedType);
         const unionNames = this.namedUnions.map(this.nameForNamedType);
@@ -837,12 +863,9 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         const nullableCanConvertExprs = allNames.map((n: Name): Sourcelike => ["t == typeof(", n, "?)"]);
         const canConvertExpr = intercalate(" || ", canConvertExprs.union(nullableCanConvertExprs));
         // FIXME: make Iterable<any, Sourcelike> a Sourcelike, too?
-        this.emitExpressionMember("public override bool CanConvert(Type t)", canConvertExpr.toArray());
+        this.emitCanConvert(canConvertExpr.toArray());
         this.ensureBlankLine();
-        this.emitLine(
-            "public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)"
-        );
-        this.emitBlock(() => {
+        this.emitReadJson(() => {
             this.emitTypeSwitch(enumNames, t => ["t == typeof(", t, ")"], false, false, n => {
                 const extensionsName = defined(this._enumExtensionsNames.get(n));
                 this.emitLine("return ", extensionsName, ".ReadJson(reader, serializer);");
@@ -872,10 +895,10 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
     private emitConverterClass(): void {
         const jsonConverter = this.haveEnums || this.haveNamedUnions;
         // FIXME: Make Converter a Named
-        let converterName: Sourcelike = ["Converter"];
-        if (jsonConverter) converterName = converterName.concat([": JsonConverter"]);
+        const converterName: Sourcelike = ["Converter"];
+        const superclass = jsonConverter ? "JsonConverter" : undefined;
         const staticOrNot = jsonConverter ? "" : "static ";
-        this.emitType(undefined, AccessModifier.Internal, [staticOrNot, "class"], converterName, undefined, () => {
+        this.emitType(undefined, AccessModifier.Internal, [staticOrNot, "class"], converterName, superclass, () => {
             if (jsonConverter) {
                 this.emitConverterMembers();
                 this.ensureBlankLine();
@@ -898,6 +921,42 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         });
     }
 
+    private emitDecoderTransformerCase(tokenCases: string[], xfer: Transformer | undefined, targetType: Type): void {
+        if (xfer === undefined) return;
+
+        for (const tokenCase of tokenCases) {
+            this.emitTokenCase(tokenCase);
+        }
+    }
+
+    private emitDecodeTransformer(xfer: Transformer, targetType: Type): void {
+        if (xfer instanceof DecodingTransformer) {
+            this.emitDecoderSwitch(() => {
+                this.emitDecoderTransformerCase(["Integer"], xfer.integerTransformer, targetType);
+                this.emitDecoderTransformerCase(["Boolean"], xfer.boolTransformer, targetType);
+                this.emitDecoderTransformerCase(["String", "Date"], xfer.stringTransformer, targetType);
+            });
+
+            // FIXME: Put type name into message if there is one
+            this.emitThrow('"Cannot convert"');
+        } else {
+            return panic("Unknown transformer");
+        }
+    }
+
+    private emitTransformation(converterName: Name, t: Type): void {
+        const xf = defined(transformationForType(t));
+        const targetType = xf.targetType;
+        const xfer = xf.transformer;
+        this.emitType(undefined, AccessModifier.Internal, "static class", converterName, "JsonConverter", () => {
+            this.emitCanConvert(["t == typeof(", this.csType(t), ")"]);
+            this.ensureBlankLine();
+            this.emitReadJson(() => {
+                this.emitDecodeTransformer(xfer, targetType);
+            });
+        });
+    }
+
     protected emitRequiredHelpers(): void {
         if (this._needHelpers) {
             this.forEachTopLevel("leading-and-interposing", (t, n) => this.emitFromJsonForTopLevel(t, n));
@@ -910,6 +969,7 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
             this.ensureBlankLine();
             this.emitConverterClass();
         }
+        this.forEachTransformation("leading-and-interposing", (n, t) => this.emitTransformation(n, t));
     }
 
     protected needNamespace(): boolean {

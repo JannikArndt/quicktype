@@ -184,3 +184,11 @@ export const transformationTypeAttributeKind: TypeAttributeKind<Transformation> 
 export function transformationForType(t: Type): Transformation | undefined {
     return transformationTypeAttributeKind.tryGetInAttributes(t.getAttributes());
 }
+
+export function followTargetType(t: Type): Type {
+    for (;;) {
+        const xf = transformationForType(t);
+        if (xf === undefined) return t;
+        t = xf.targetType;
+    }
+}
