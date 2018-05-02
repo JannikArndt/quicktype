@@ -2,7 +2,7 @@ import { Set } from "immutable";
 
 import { TypeGraph } from "./TypeGraph";
 import { TargetLanguage } from "./TargetLanguage";
-import { UnionType, TypeKind } from "./Type";
+import { UnionType, PrimitiveTypeKind } from "./Type";
 import { GraphRewriteBuilder } from "./GraphRewriting";
 import { TypeRef, StringTypeMapping } from "./TypeBuilder";
 import { defined, assert } from "./Support";
@@ -24,14 +24,15 @@ function replace(
         union.getAttributes(),
         union.members.map(m => builder.reconstituteType(m))
     );
-    const unionInstantiation = new UnionInstantiationTransformer(reconstitutedUnion);
 
-    function transformerForKind(kind: TypeKind) {
-        if (union.findMember(kind) === undefined) return undefined;
-        return unionInstantiation;
+    function transformerForKind(kind: PrimitiveTypeKind) {
+        const member = union.findMember(kind);
+        if (member === undefined) return undefined;
+        return new UnionInstantiationTransformer(builder.reconstituteType(member), reconstitutedUnion);
     }
 
     const transformer = new DecodingTransformer(
+        builder.getPrimitiveType("any"),
         transformerForKind("null"),
         transformerForKind("integer"),
         transformerForKind("double"),

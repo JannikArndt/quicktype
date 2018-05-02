@@ -271,7 +271,7 @@ export class TypeBuilder {
             return this.getStringType(attributes, stringTypes, forwardingRef);
         }
         return this.getOrAddType(
-            primitiveTypeIdentity(kind, emptyTypeAttributes),
+            primitiveTypeIdentity(kind, attributes),
             tr => new PrimitiveType(tr, kind),
             attributes,
             forwardingRef
