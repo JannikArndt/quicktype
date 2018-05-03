@@ -30,10 +30,12 @@ enum Framework {
 }
 
 export default class KotlinTargetLanguage extends TargetLanguage {
-    private readonly _frameworkOption = new EnumOption("framework", "Serialization framework", [
-        ["just-types", Framework.None],
-        ["klaxon", Framework.Klaxon]
-    ]);
+    private readonly _frameworkOption = new EnumOption(
+        "framework",
+        "Serialization framework",
+        [["just-types", Framework.None], ["klaxon", Framework.Klaxon]],
+        "klaxon"
+    );
 
     constructor() {
         super("Kotlin", ["kotlin"], "kt");
