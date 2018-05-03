@@ -522,6 +522,7 @@ export const KotlinLanguage: Language = {
     return `cp "${sample}" sample.json && gradle -Pmain=main.kt --quiet`;
   },
   diffViaSchema: true,
+  skipDiffViaSchema: [],
   allowMissingNull: true,
   output: "TopLevel.kt",
   topLevel: "TopLevel",
