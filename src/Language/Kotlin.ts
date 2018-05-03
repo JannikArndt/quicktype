@@ -1,15 +1,5 @@
 import { TargetLanguage } from "../TargetLanguage";
-import {
-    Type,
-    ClassType,
-    EnumType,
-    UnionType,
-    matchType,
-    nullableFromUnion,
-    removeNullFromUnion,
-    TypeKind,
-    ClassProperty
-} from "../Type";
+import { Type, ClassType, EnumType, UnionType, TypeKind, ClassProperty } from "../Type";
 import { TypeGraph } from "../TypeGraph";
 import { Name, Namer, funPrefixNamer } from "../Naming";
 import { Option, EnumOption } from "../RendererOptions";
@@ -32,6 +22,7 @@ import {
     allUpperWordStyle,
     camelCase
 } from "../Strings";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
 
 enum Framework {
     None,
@@ -61,6 +52,7 @@ export default class KotlinTargetLanguage extends TargetLanguage {
     }
 
     protected get rendererClass(): new (
+        targetLanguage: TargetLanguage,
         graph: TypeGraph,
         leadingComments: string[] | undefined,
         ...optionValues: any[]
@@ -134,8 +126,13 @@ const upperNamingFunction = funPrefixNamer("upper", s => kotlinNameStyle(true, s
 const lowerNamingFunction = funPrefixNamer("lower", s => kotlinNameStyle(false, s));
 
 class KotlinRenderer extends ConvenienceRenderer {
-    constructor(graph: TypeGraph, leadingComments: string[] | undefined, private readonly _framework: Framework) {
-        super(graph, leadingComments);
+    constructor(
+        targetLanguage: TargetLanguage,
+        graph: TypeGraph,
+        leadingComments: string[] | undefined,
+        private readonly _framework: Framework
+    ) {
+        super(targetLanguage, graph, leadingComments);
     }
 
     get _justTypes() {
@@ -166,7 +163,7 @@ class KotlinRenderer extends ConvenienceRenderer {
         return upperNamingFunction;
     }
 
-    protected namerForClassProperty(): Namer {
+    protected namerForObjectProperty(): Namer {
         return lowerNamingFunction;
     }
 
@@ -348,7 +345,7 @@ class KotlinRenderer extends ConvenienceRenderer {
         this.emitDescription(this.descriptionForType(c));
         this.emitLine("data class ", className, " (");
         this.indent(() => {
-            let count = c.properties.count();
+            let count = c.getProperties().count;
             let first = true;
             this.forEachClassProperty(c, "none", (name, jsonName, p) => {
                 const nullable = p.isOptional || p.type.kind === "null";
