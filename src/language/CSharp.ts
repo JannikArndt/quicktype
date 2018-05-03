@@ -348,9 +348,8 @@ export class CSharpRenderer extends ConvenienceRenderer {
                 let isFirstProperty = true;
                 let previousDescription: string[] | undefined = undefined;
                 this.forEachClassProperty(c, blankLines, (name, jsonName, p) => {
-                    const csType = p.isOptional
-                        ? this.nullableCSType(p.type, true)
-                        : this.csType(p.type, followTargetType, true);
+                    const t = followTargetType(p.type);
+                    const csType = p.isOptional ? this.nullableCSType(t, true) : this.csType(t, noFollow, true);
                     const attributes = this.attributesForProperty(p, jsonName);
                     const description = this.descriptionForClassProperty(c, jsonName);
                     const property = ["public ", csType, " ", name, " { get; set; }"];
@@ -615,6 +614,25 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         });
     }
 
+    private converterForType(_t: Type): Name | undefined {
+        return undefined;
+        /*
+        for (;;) {
+            const name = this.nameForTransformation(t);
+            if (name !== undefined) {
+                return name;
+            }
+            if (t instanceof ArrayType) {
+                t = t.items;
+            } else if (t instanceof MapType) {
+                t = t.values;
+            } else {
+                return undefined;
+            }
+        }
+        */
+    }
+
     protected attributesForProperty(property: ClassProperty, jsonName: string): Sourcelike[] | undefined {
         if (!this._needAttributes) return undefined;
 
@@ -640,9 +658,9 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         }
         attributes.push(["[", jsonProperty, '("', escapedName, '"', required, ")]"]);
 
-        const transformationName = this.nameForTransformation(property.type);
-        if (transformationName !== undefined) {
-            attributes.push(["[JsonConverter(", transformationName, ")]"]);
+        const converter = this.converterForType(property.type);
+        if (converter !== undefined) {
+            attributes.push(["[JsonConverter(typeof(", converter, "))]"]);
         }
 
         return attributes;
@@ -942,16 +960,17 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
             this.emitBlock(() => {
                 this.emitLine("MetadataPropertyHandling = MetadataPropertyHandling.Ignore,");
                 this.emitLine("DateParseHandling = DateParseHandling.None,");
-                if (this.haveNamedUnions || this.haveEnums) {
-                    this.emitMultiline(`Converters = { 
-    new Converter(),
-    new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-},`);
-                } else {
-                    this.emitMultiline(`Converters = { 
-    new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-},`);
-                }
+                this.emitLine("Converters = {");
+                this.indent(() => {
+                    if (jsonConverter) {
+                        this.emitLine("new Converter(),");
+                    }
+                    this.typesWithNamedTransformations.forEach(converter => {
+                        this.emitLine("new ", converter, "(),");
+                    });
+                    this.emitLine("new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }");
+                });
+                this.emitLine(`},`);
             }, true);
         });
     }
@@ -1025,14 +1044,15 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
         const targetType = xf.targetType;
         const xfer = xf.transformer;
         this.emitType(undefined, AccessModifier.Internal, "class", converterName, "JsonConverter", () => {
-            this.emitCanConvert(["t == typeof(", this.csType(targetType, noFollow), ")"]);
+            const csType = this.csType(targetType, noFollow);
+            this.emitCanConvert(["t == typeof(", csType, ") || t == typeof(", csType, "?)"]);
             this.ensureBlankLine();
             this.emitReadJson(() => {
                 this.emitDecodeTransformer(xfer, targetType);
             });
             this.ensureBlankLine();
             this.emitWriteJson("untypedValue", () => {
-                this.emitLine("var value = (", this.csType(targetType, noFollow), ")untypedValue;");
+                this.emitLine("var value = (", csType, ")untypedValue;");
                 this.emitTransformer("value", xf.reverseTransformer, xf.sourceType);
 
                 // FIXME: Only throw if there's the possibility of it not being exhaustive

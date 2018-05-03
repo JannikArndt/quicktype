@@ -264,6 +264,10 @@ export abstract class ConvenienceRenderer extends Renderer {
         return name;
     };
 
+    protected get typesWithNamedTransformations(): Map<Type, Name> {
+        return defined(this._namesForTransformations);
+    }
+
     protected nameForTransformation(t: Type): Name | undefined {
         assert(
             this._transformationNamer !== undefined,
