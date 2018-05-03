@@ -345,7 +345,7 @@ class KotlinRenderer extends ConvenienceRenderer {
         this.emitDescription(this.descriptionForType(c));
         this.emitLine("data class ", className, " (");
         this.indent(() => {
-            let count = c.getProperties().count;
+            let count = c.getProperties().count();
             let first = true;
             this.forEachClassProperty(c, "none", (name, jsonName, p) => {
                 const nullable = p.isOptional || p.type.kind === "null";
