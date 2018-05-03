@@ -516,14 +516,9 @@ export const FlowLanguage: Language = {
 export const KotlinLanguage: Language = {
   name: "kotlin",
   base: "test/fixtures/kotlin",
-  compileCommand: "true",
+  compileCommand: "kotlinc main.kt TopLevel.kt -include-runtime -cp klaxon-3.0.1.jar -d main.jar",
   runCommand(sample: string) {
-    const klaxon = "klaxon-3.0.1.jar";
-    return [
-      `cp "${sample}" sample.json`,
-      `kotlinc main.kt TopLevel.kt -include-runtime -cp ${klaxon} -d main.jar`,
-      `java -cp ${klaxon} -jar main.jar`
-    ].join(" && ");
+    return `cp "${sample}" sample.json && java -cp klaxon-3.0.1.jar -jar main.jar`;
   },
   diffViaSchema: true,
   skipDiffViaSchema: [],
