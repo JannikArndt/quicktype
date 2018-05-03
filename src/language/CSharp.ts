@@ -47,7 +47,7 @@ function noFollow(t: Type): Type {
 }
 
 function needTransformerForUnion(u: UnionType): boolean {
-    const supportedKinds: TypeKind[] = ["integer", "bool", "string"];
+    const supportedKinds: TypeKind[] = ["integer", "double", "bool", "string"];
     return u.members.every(t => supportedKinds.indexOf(t.kind) >= 0);
 }
 
@@ -248,6 +248,10 @@ export class CSharpRenderer extends ConvenienceRenderer {
         this.emitLine("}", semicolon ? ";" : "");
     }
 
+    protected get doubleType(): string {
+        return this._useDecimal ? "decimal" : "double";
+    }
+
     protected csType(t: Type, follow: (t: Type) => Type = followTargetType, withIssues: boolean = false): Sourcelike {
         return matchType<Sourcelike>(
             follow(t),
@@ -255,7 +259,7 @@ export class CSharpRenderer extends ConvenienceRenderer {
             _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "object"),
             _boolType => "bool",
             _integerType => "long",
-            _doubleType => (this._useDecimal ? "decimal" : "double"),
+            _doubleType => this.doubleType,
             _stringType => "string",
             arrayType => {
                 const itemsType = this.csType(arrayType.items, follow, withIssues);
@@ -1012,7 +1016,13 @@ export class NewtonsoftCSharpRenderer extends CSharpRenderer {
     private emitDecodeTransformer(xfer: Transformer, targetType: Type): void {
         if (xfer instanceof DecodingTransformer) {
             this.emitDecoderSwitch(() => {
-                this.emitDecoderTransformerCase(["Integer"], "long", xfer.integerTransformer, targetType);
+                this.emitDecoderTransformerCase(["Float"], this.doubleType, xfer.doubleTransformer, targetType);
+                this.emitDecoderTransformerCase(
+                    xfer.doubleTransformer === undefined ? ["Integer"] : ["Float", "Integer"],
+                    "long",
+                    xfer.integerTransformer,
+                    targetType
+                );
                 this.emitDecoderTransformerCase(["Boolean"], "bool", xfer.boolTransformer, targetType);
                 this.emitDecoderTransformerCase(["String", "Date"], "string", xfer.stringTransformer, targetType);
             });
