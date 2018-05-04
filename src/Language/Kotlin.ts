@@ -23,6 +23,7 @@ import {
     camelCase
 } from "../Strings";
 import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+import { intercalateArray } from "../Support";
 
 enum Framework {
     None,
@@ -332,7 +333,7 @@ class KotlinRenderer extends ConvenienceRenderer {
         if (ignore) {
             properties.push("ignored = true");
         }
-        return properties.length === 0 ? undefined : ["@Json(", properties.join(", "), ")"];
+        return properties.length === 0 ? undefined : ["@Json(", intercalateArray(", ", properties), ")"];
     }
 
     private renderClassDefinition = (c: ClassType, className: Name): void => {
@@ -410,17 +411,19 @@ class KotlinRenderer extends ConvenienceRenderer {
     };
 
     private renderEnumConverter = (e: EnumType, enumName: Name): void => {
-        this.emitBlock(["val convert", enumName, " = object: Converter<", enumName, ">"], () => {
-            this.emitBlock(["override fun toJson(value: ", enumName, "): String? = when (value)"], () => {
+        this.emitBlock(["val convert", enumName, " = object: Converter"], () => {
+            this.emitLine("override fun canConvert(cls: Class<*>) = cls == ", enumName, "::class.java");
+            this.ensureBlankLine();
+            this.emitBlock(["override fun toJson(value: Any): String = when (value)"], () => {
                 let table: Sourcelike[][] = [];
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
                     table.push([[enumName, ".", name], [" -> ", `"${stringEscape(jsonName)}"`]]);
                 });
-                table.push(["else", " -> null"]);
+                table.push(["else", ' -> throw IllegalArgumentException("Illegal ', enumName, '")']);
                 this.emitTable(table);
             });
             this.ensureBlankLine();
-            this.emitBlock(["override fun fromJson(jv: JsonValue): ", enumName, " = when (jv.inside)"], () => {
+            this.emitBlock(["override fun fromJson(jv: JsonValue): Any = when (jv.inside)"], () => {
                 let table: Sourcelike[][] = [];
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
                     table.push([`"${stringEscape(jsonName)}"`, [" -> ", enumName, ".", name]]);
