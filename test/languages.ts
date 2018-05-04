@@ -518,7 +518,7 @@ export const KotlinLanguage: Language = {
   base: "test/fixtures/kotlin",
   compileCommand: "kotlinc main.kt TopLevel.kt -include-runtime -cp klaxon-3.0.1.jar -d main.jar",
   runCommand(sample: string) {
-    return `cp "${sample}" sample.json && java -cp klaxon-3.0.1.jar -jar main.jar`;
+    return `cp "${sample}" sample.json && kotlin -cp klaxon-3.0.1.jar:main.jar quicktype.MainKt`;
   },
   diffViaSchema: true,
   skipDiffViaSchema: [],
